@@ -1,0 +1,18 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+
+# Environment variables
+.env
+
+# uv
+uv.lock
+
+# OS
+.DS_Store
