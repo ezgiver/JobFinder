@@ -41,9 +41,15 @@ LINK_COL_CONFIG = {"job_url": st.column_config.LinkColumn("job_url")}
 
 st.title("Job Search Automation")
 
-gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+env_api_key = os.environ.get("GEMINI_API_KEY", "").strip().strip("\"'")
 
 with st.form("search_form"):
+    gemini_api_key = st.text_input(
+        "Gemini API Key",
+        value=env_api_key,
+        type="password",
+        placeholder="Paste your Gemini API key here",
+    )
     target_role = st.text_input(
         "Target Role", placeholder="e.g. Software Engineer, Data Analyst"
     )
@@ -57,12 +63,13 @@ with st.form("search_form"):
     submitted = st.form_submit_button("Search Jobs")
 
 if submitted:
-    if not target_role:
+    gemini_api_key = gemini_api_key.strip()
+    if not gemini_api_key:
+        st.error("Please enter your Gemini API key.")
+    elif not target_role:
         st.error("Please enter a target role.")
     elif not cv_file:
         st.error("Please upload your CV.")
-    elif not gemini_api_key:
-        st.error("GEMINI_API_KEY environment variable is not set.")
     else:
         cv_text = extract_cv_text(cv_file)
         if not cv_text.strip():
