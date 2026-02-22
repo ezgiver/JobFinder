@@ -81,28 +81,46 @@ if submitted:
 
         st.info(f"Loaded {len(sponsors):,} sponsored companies from the UK register.")
 
-        # Step 2: Scrape jobs by target role in London
-        hours_old = days_old * 24
-        with st.spinner(f"Searching for '{target_role}' jobs in London..."):
+        # Step 2: Progressive scrape — newest jobs first, expand until limit
+        scrape_status = st.empty()
+        master_df = pd.DataFrame()
+
+        for day in range(1, days_old + 1):
+            scrape_status.info(
+                f"Searching day {day}/{days_old} — "
+                f"found {len(master_df)} unique jobs so far..."
+            )
             try:
-                master_df = scrape_jobs(
+                batch = scrape_jobs(
                     site_name=["indeed", "linkedin"],
                     search_term=target_role,
                     location="London, UK",
-                    hours_old=hours_old,
+                    hours_old=day * 24,
                     results_wanted=MAX_RESULTS,
                     linkedin_fetch_description=True,
                 )
-            except Exception as e:
-                st.error(f"Scraping failed: {e}")
-                st.stop()
+            except Exception:
+                continue
+
+            if batch.empty:
+                continue
+
+            master_df = (
+                pd.concat([master_df, batch], ignore_index=True)
+                .drop_duplicates(subset="job_url", keep="first")
+            )
+
+            if len(master_df) >= MAX_RESULTS:
+                master_df = master_df.head(MAX_RESULTS)
+                break
+
+        scrape_status.empty()
 
         if master_df.empty:
             st.info(f"No '{target_role}' jobs found in London.")
             st.stop()
 
-        master_df = master_df.drop_duplicates(subset="job_url", keep="first")
-        st.info(f"Scraped {len(master_df)} unique jobs.")
+        st.info(f"Scraped {len(master_df)} unique jobs across {day} day{'s' if day > 1 else ''}.")
 
         # Step 3: Fuzzy-match against visa sponsor register
         with st.spinner("Verifying companies against sponsor register..."):
