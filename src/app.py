@@ -11,6 +11,7 @@ from google import genai
 from jobspy import scrape_jobs
 
 from cv_parser import extract_cv_text
+from cv_profile import extract_cv_profile
 from scoring import score_jobs
 from sponsors import load_sponsor_register, verify_sponsors
 
@@ -117,17 +118,29 @@ if submitted:
             st.stop()
 
         st.info(
-            f"{len(sponsor_df)} jobs are from verified visa sponsors. Now scoring with AI..."
+            f"{len(sponsor_df)} jobs are from verified visa sponsors."
         )
 
-        # Step 4: Score sponsor jobs against CV
+        # Step 4: Extract structured CV profile
         gemini_client = genai.Client(api_key=gemini_api_key)
+        with st.spinner("Extracting structured profile from your CV..."):
+            try:
+                cv_profile = extract_cv_profile(cv_text, gemini_client)
+            except Exception as e:
+                st.error(f"Failed to extract CV profile: {e}")
+                st.stop()
+
+        with st.expander("Your extracted CV profile"):
+            st.json(cv_profile)
+
+        # Step 5: Score sponsor jobs against profile
+        st.info("Scoring jobs with AI...")
         progress_bar = st.progress(0, text="Scoring jobs with AI...")
 
         def _update_progress(current, total):
             progress_bar.progress(current / total, text=f"Scoring job {current}/{total}")
 
-        scored_df = score_jobs(cv_text, sponsor_df, gemini_client, _update_progress)
+        scored_df = score_jobs(cv_profile, sponsor_df, gemini_client, _update_progress)
         progress_bar.empty()
 
         scored_df = scored_df.sort_values("match_score", ascending=False)

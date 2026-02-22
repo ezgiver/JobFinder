@@ -7,6 +7,18 @@ import pandas as pd
 
 from src.scoring import GEMINI_DELAY_SECONDS, score_jobs
 
+SAMPLE_PROFILE = {
+    "skills": [
+        {"name": "Python", "proficiency": "expert"},
+        {"name": "AWS", "proficiency": "advanced"},
+    ],
+    "seniority_level": "senior",
+    "total_years_experience": 8,
+    "industries": ["fintech"],
+    "education": {"degree_level": "MSc", "field": "Computer Science"},
+    "job_titles": ["Senior Software Engineer"],
+}
+
 
 def _mock_client(responses):
     """Build a mock Gemini client returning given JSON dicts in sequence."""
@@ -24,16 +36,17 @@ class TestScoreJobs:
     """Bugs here either send wrong data to Gemini, misparse the response,
     crash on unexpected API output, or skip rate limiting."""
 
-    def test_prompt_contains_cv_and_job_description(self):
+    def test_prompt_contains_profile_and_job_description(self):
         """If the prompt template is broken, Gemini scores against garbage."""
         df = pd.DataFrame({"description": ["Build microservices in Go"]})
         client = _mock_client([{"match_score": 75, "reasoning": "OK"}])
 
         with patch("src.scoring.time.sleep"):
-            score_jobs("I know Python and AWS", df, client)
+            score_jobs(SAMPLE_PROFILE, df, client)
 
         actual_prompt = client.models.generate_content.call_args[1]["contents"]
-        assert "I know Python and AWS" in actual_prompt
+        assert "Python" in actual_prompt
+        assert "senior" in actual_prompt
         assert "Build microservices in Go" in actual_prompt
 
     def test_scores_assigned_to_correct_rows(self):
@@ -49,7 +62,7 @@ class TestScoreJobs:
         )
 
         with patch("src.scoring.time.sleep"):
-            result = score_jobs("Python dev CV", df, client)
+            result = score_jobs(SAMPLE_PROFILE, df, client)
 
         assert result.iloc[0]["match_score"] == 92
         assert result.iloc[0]["reasoning"] == "Python expert"
@@ -62,7 +75,7 @@ class TestScoreJobs:
         client = MagicMock()
 
         with patch("src.scoring.time.sleep"):
-            result = score_jobs("CV", df, client)
+            result = score_jobs(SAMPLE_PROFILE, df, client)
 
         assert result["match_score"].iloc[0] == 0
         assert result["reasoning"].iloc[0] == "No job description available."
@@ -77,7 +90,7 @@ class TestScoreJobs:
         client.models.generate_content.return_value = mock_resp
 
         with patch("src.scoring.time.sleep"):
-            result = score_jobs("CV", df, client)
+            result = score_jobs(SAMPLE_PROFILE, df, client)
 
         assert result["match_score"].iloc[0] == 0
         assert "Scoring failed" in result["reasoning"].iloc[0]
@@ -88,7 +101,7 @@ class TestScoreJobs:
         client = _mock_client([{"score": 80, "reason": "Good"}])
 
         with patch("src.scoring.time.sleep"):
-            result = score_jobs("CV", df, client)
+            result = score_jobs(SAMPLE_PROFILE, df, client)
 
         assert result["match_score"].iloc[0] == 0
         assert "Scoring failed" in result["reasoning"].iloc[0]
@@ -104,7 +117,7 @@ class TestScoreJobs:
         )
 
         with patch("src.scoring.time.sleep") as mock_sleep:
-            score_jobs("CV", df, client)
+            score_jobs(SAMPLE_PROFILE, df, client)
 
         mock_sleep.assert_called_once_with(GEMINI_DELAY_SECONDS)
 
@@ -114,7 +127,7 @@ class TestScoreJobs:
         client = _mock_client([{"match_score": 50, "reasoning": "OK"}])
 
         with patch("src.scoring.time.sleep") as mock_sleep:
-            score_jobs("CV", df, client)
+            score_jobs(SAMPLE_PROFILE, df, client)
 
         mock_sleep.assert_not_called()
 
@@ -125,7 +138,7 @@ class TestScoreJobs:
         client = _mock_client([{"match_score": 50, "reasoning": "OK"}])
 
         with patch("src.scoring.time.sleep"):
-            result = score_jobs("CV", df, client)
+            result = score_jobs(SAMPLE_PROFILE, df, client)
 
         assert list(df.columns) == original_cols
         assert "match_score" not in df.columns
@@ -146,7 +159,7 @@ class TestScoreJobs:
         client.models.generate_content.side_effect = [resp_ok1, resp_fail, resp_ok2]
 
         with patch("src.scoring.time.sleep"):
-            result = score_jobs("CV", df, client)
+            result = score_jobs(SAMPLE_PROFILE, df, client)
 
         assert result.iloc[0]["match_score"] == 85
         assert result.iloc[1]["match_score"] == 0
@@ -165,7 +178,7 @@ class TestScoreJobs:
         callback = MagicMock()
 
         with patch("src.scoring.time.sleep"):
-            score_jobs("CV", df, client, progress_callback=callback)
+            score_jobs(SAMPLE_PROFILE, df, client, progress_callback=callback)
 
         assert callback.call_count == 2
         callback.assert_any_call(1, 2)
@@ -180,7 +193,7 @@ class TestScoreJobs:
         client = _mock_client([{"match_score": 60, "reasoning": "JS role"}])
 
         with patch("src.scoring.time.sleep"):
-            result = score_jobs("Python dev CV", df, client)
+            result = score_jobs(SAMPLE_PROFILE, df, client)
 
         assert result["match_score"].iloc[0] == 60
         # Verify the curly braces made it into the prompt intact
@@ -193,7 +206,7 @@ class TestScoreJobs:
         client = MagicMock()
 
         with patch("src.scoring.time.sleep"):
-            result = score_jobs("CV", df, client)
+            result = score_jobs(SAMPLE_PROFILE, df, client)
 
         assert result["match_score"].iloc[0] == 0
         assert "No description column" in result["reasoning"].iloc[0]
