@@ -11,6 +11,7 @@ dependencies = [
     "python-jobspy>=1.1.82",
     "google-genai>=1.64.0",
     "rapidfuzz>=3.14.3",
+    "python-dotenv>=1.1.0",
 ]
 
 [dependency-groups]

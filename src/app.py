@@ -2,7 +2,10 @@
 
 import os
 
+from dotenv import load_dotenv
 import pandas as pd
+
+load_dotenv()
 import streamlit as st
 from google import genai
 from jobspy import scrape_jobs
@@ -41,15 +44,9 @@ LINK_COL_CONFIG = {"job_url": st.column_config.LinkColumn("job_url")}
 
 st.title("Job Search Automation")
 
-env_api_key = os.environ.get("GEMINI_API_KEY", "").strip().strip("\"'")
+gemini_api_key = os.environ.get("GEMINI_API_KEY", "").strip().strip("\"'")
 
 with st.form("search_form"):
-    gemini_api_key = st.text_input(
-        "Gemini API Key",
-        value=env_api_key,
-        type="password",
-        placeholder="Paste your Gemini API key here",
-    )
     target_role = st.text_input(
         "Target Role", placeholder="e.g. Software Engineer, Data Analyst"
     )
@@ -63,9 +60,8 @@ with st.form("search_form"):
     submitted = st.form_submit_button("Search Jobs")
 
 if submitted:
-    gemini_api_key = gemini_api_key.strip()
     if not gemini_api_key:
-        st.error("Please enter your Gemini API key.")
+        st.error("GEMINI_API_KEY environment variable is not set.")
     elif not target_role:
         st.error("Please enter a target role.")
     elif not cv_file:
