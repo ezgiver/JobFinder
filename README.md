@@ -39,7 +39,7 @@ uv sync
 export GEMINI_API_KEY="your-key-here"
 
 # Run
-uv run streamlit run app.py
+uv run streamlit run src/app.py
 ```
 
 Get a Gemini API key at [aistudio.google.com](https://aistudio.google.com/apikey).
