@@ -13,14 +13,15 @@ from jobspy import scrape_jobs
 from cv_parser import extract_cv_text
 from scoring import score_jobs
 from sponsors import load_sponsor_register, verify_sponsors
+from tiers import TIERS, assign_tier
 
 st.set_page_config(page_title="Job Finder", layout="wide")
 
-MIN_MATCH_SCORE = 70
 MAX_RESULTS = 100
 
 DISPLAY_COLS = [
     "match_score",
+    "match_tier",
     "reasoning",
     "title",
     "company",
@@ -131,24 +132,33 @@ if submitted:
         progress_bar.empty()
 
         scored_df = scored_df.sort_values("match_score", ascending=False)
-        matched_df = scored_df[scored_df["match_score"] >= MIN_MATCH_SCORE]
+        scored_df["match_tier"] = scored_df["match_score"].apply(assign_tier)
 
-        if not matched_df.empty:
-            st.subheader(f"{len(matched_df)} jobs match your CV (score >= {MIN_MATCH_SCORE})")
+        any_displayed = False
+        for tier_label, low, high in TIERS:
+            tier_df = scored_df[
+                (scored_df["match_score"] >= low) & (scored_df["match_score"] <= high)
+            ]
+            if tier_df.empty:
+                continue
+            any_displayed = True
+            st.subheader(f"{tier_label} — {len(tier_df)} jobs")
             st.dataframe(
-                reorder_cols(matched_df),
+                reorder_cols(tier_df),
                 use_container_width=True,
                 column_config=LINK_COL_CONFIG,
             )
-            csv_data = matched_df.to_csv(index=False).encode("utf-8")
+            file_slug = tier_label.split("(")[0].strip().lower().replace(" ", "_")
+            csv_data = tier_df.to_csv(index=False).encode("utf-8")
             st.download_button(
-                "Download matched jobs as CSV",
+                f"Download {tier_label} as CSV",
                 data=csv_data,
-                file_name="matched_jobs.csv",
+                file_name=f"{file_slug}_jobs.csv",
                 mime="text/csv",
             )
-        else:
-            st.warning(f"No jobs scored {MIN_MATCH_SCORE} or above.")
+
+        if not any_displayed:
+            st.warning("No jobs scored 50 or above.")
 
         with st.expander(f"All sponsor jobs ({len(scored_df)} total)"):
             st.dataframe(
