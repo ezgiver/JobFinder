@@ -1,0 +1,19 @@
+name: Deploy PoC
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies and restart service
+        run: |
+          cd /home/freebox/JobFinder
+          source venv/bin/activate
+          pip install .
+          sudo systemctl restart jobfinder
