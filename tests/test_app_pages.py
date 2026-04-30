@@ -286,29 +286,52 @@ class TestLoginPage:
 class TestRegisterPage:
     """Register tab tests using AppTest."""
 
-    def test_duplicate_email_shows_error(self):
+    def test_duplicate_email_shows_error(self, mocker):
         """Duplicate email on register → 'Email already registered.' error.
+
+        Uses direct function call so patches survive — AppTest re-imports
+        app.py in its own process, causing patches applied in the outer
+        process to be lost.
 
         Requirement 1.3
         """
-        from streamlit.testing.v1 import AppTest
+        # Patch st.tabs to return two context-manager mocks
+        login_tab = MagicMock()
+        login_tab.__enter__ = MagicMock(return_value=login_tab)
+        login_tab.__exit__ = MagicMock(return_value=False)
+        register_tab = MagicMock()
+        register_tab.__enter__ = MagicMock(return_value=register_tab)
+        register_tab.__exit__ = MagicMock(return_value=False)
 
-        with (
-            patch("src.app.init_db"),
-            patch("src.app.get_scheduler"),
-            patch("src.app.get_session", return_value=_session_ctx()),
-            patch("src.app.hash_password", return_value="hashed"),
-            patch("src.app.create_user", side_effect=IntegrityError("", "", "")),
-        ):
-            at = AppTest.from_file(APP_PATH, default_timeout=30)
-            at.run()
+        mocker.patch("streamlit.title")
+        mocker.patch("streamlit.tabs", return_value=[login_tab, register_tab])
+        mocker.patch("streamlit.subheader")
 
-            at.text_input(key="reg_email").set_value("dup@example.com")
-            at.text_input(key="reg_password").set_value("password123")
-            at.button(key="register_btn").click()
-            at.run()
+        def _text_input(label, value="", key=None, **kw):
+            if key == "reg_email":
+                return "dup@example.com"
+            if key == "reg_password":
+                return "password123"
+            return value
 
-        assert any("already registered" in e.value for e in at.error)
+        mocker.patch("streamlit.text_input", side_effect=_text_input)
+
+        def _button(label, key=None, **kw):
+            return key == "register_btn"
+
+        mocker.patch("streamlit.button", side_effect=_button)
+        mock_error = mocker.patch("streamlit.error")
+
+        mocker.patch("src.app.get_session", return_value=_session_ctx())
+        mocker.patch("src.app.hash_password", return_value="hashed")
+        mocker.patch("src.app.create_user", side_effect=IntegrityError("", "", ""))
+
+        from src.app import render_login_register_page
+
+        render_login_register_page()
+
+        error_messages = [call.args[0] for call in mock_error.call_args_list]
+        assert any("already registered" in msg for msg in error_messages)
 
     def test_invalid_email_shows_error(self):
         """Malformed email → 'Invalid email address.' error."""
