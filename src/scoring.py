@@ -10,6 +10,10 @@ from google.genai import types
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_DELAY_SECONDS = 1.5
 
+# Retry config for transient Gemini errors (429, 503)
+_MAX_RETRIES = 2
+_RETRY_BASE_DELAY = 10  # seconds; doubles each attempt: 10, 20
+
 SYSTEM_PROMPT = """\
 You are a highly strategic, perceptive Executive Headhunter. Your job is to \
 critically evaluate a candidate's CV against a provided Job Description (JD) \
@@ -69,6 +73,55 @@ SCORE_SCHEMA = {
 }
 
 
+def _is_retryable(exc: Exception) -> bool:
+    """Return True for transient Gemini errors that warrant a retry.
+
+    429 RESOURCE_EXHAUSTED = daily quota exceeded — NOT retryable (wait until reset).
+    429 Too Many Requests (rate limit) = retryable with backoff.
+    503 UNAVAILABLE = temporary overload — retryable.
+    """
+    msg = str(exc).lower()
+    # Daily quota exhausted — do not retry
+    if "resource_exhausted" in msg or "exceeded your current quota" in msg:
+        return False
+    # Temporary rate limit or overload — retry
+    return any(code in msg for code in ("503", "unavailable", "too many requests"))
+
+
+def _score_single(
+    client: genai.Client,
+    config: types.GenerateContentConfig,
+    cv_text: str,
+    description: str,
+) -> tuple[int, str]:
+    """Score one job description against the CV with exponential backoff retry.
+
+    Returns (match_score, reasoning).
+    """
+    delay = _RETRY_BASE_DELAY
+    last_exc: Exception | None = None
+
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=_build_prompt(cv_text, description),
+                config=config,
+            )
+            result = json.loads(response.text)
+            return result["match_score"], result["reasoning"]
+        except Exception as exc:
+            last_exc = exc
+            if _is_retryable(exc) and attempt < _MAX_RETRIES:
+                time.sleep(delay)
+                delay *= 2  # exponential backoff
+                continue
+            # Non-retryable or exhausted retries — give up
+            break
+
+    return 0, f"Scoring failed after {_MAX_RETRIES} retries: {last_exc}"
+
+
 def score_jobs(
     cv_text: str,
     df: pd.DataFrame,
@@ -110,18 +163,9 @@ def score_jobs(
             reasonings.append("No job description available.")
             continue
 
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=_build_prompt(cv_text, description),
-                config=config,
-            )
-            result = json.loads(response.text)
-            scores.append(result["match_score"])
-            reasonings.append(result["reasoning"])
-        except Exception as e:
-            scores.append(0)
-            reasonings.append(f"Scoring failed: {e}")
+        score, reasoning = _score_single(client, config, cv_text, description)
+        scores.append(score)
+        reasonings.append(reasoning)
 
         # Rate-limit delay between Gemini calls
         if idx < total - 1:
