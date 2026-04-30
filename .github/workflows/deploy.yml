@@ -8,8 +8,10 @@ jobs:
   deploy:
     runs-on: self-hosted
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Pull latest code
+        run: |
+          cd /home/freebox/JobFinder
+          git pull origin main
 
       - name: Install dependencies and restart service
         run: |
