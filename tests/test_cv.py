@@ -1,6 +1,5 @@
 """Tests for CV text extraction."""
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,9 +22,8 @@ class TestExtractCvText:
         mock_doc.__exit__ = MagicMock(return_value=False)
         mock_doc.__iter__ = MagicMock(return_value=iter(pages))
 
-        uploaded = SimpleNamespace(name="cv.pdf", read=lambda: b"bytes")
         with patch("src.cv_parser.fitz.open", return_value=mock_doc):
-            result = extract_cv_text(uploaded)
+            result = extract_cv_text(b"bytes", "cv.pdf")
 
         assert "Name: John" in result
         assert "Experience: 5 years Python" in result
@@ -37,9 +35,8 @@ class TestExtractCvText:
         paras = [MagicMock(text=t) for t in ["Skills: Python", "Company: Google"]]
         mock_doc = MagicMock(paragraphs=paras)
 
-        uploaded = SimpleNamespace(name="cv.docx", read=lambda: b"bytes")
         with patch("src.cv_parser.Document", return_value=mock_doc):
-            result = extract_cv_text(uploaded)
+            result = extract_cv_text(b"bytes", "cv.docx")
 
         assert result == "Skills: Python\nCompany: Google"
         assert "Python\nCompany" in result
@@ -47,14 +44,12 @@ class TestExtractCvText:
     def test_unsupported_format_returns_empty(self):
         """Uploading a .txt or .odt should not crash."""
         for ext in [".txt", ".odt", ".rtf", ".pages"]:
-            uploaded = SimpleNamespace(name=f"cv{ext}", read=lambda: b"data")
-            result = extract_cv_text(uploaded)
+            result = extract_cv_text(b"data", f"cv{ext}")
             assert result == "", f"Expected empty string for {ext}"
 
     def test_pdf_library_crash_propagates(self):
         """A corrupt PDF error must bubble up — not silently return empty,
         which would cause the AI to score against nothing."""
-        uploaded = SimpleNamespace(name="corrupt.pdf", read=lambda: b"not a pdf")
         with patch("src.cv_parser.fitz.open", side_effect=RuntimeError("corrupt PDF")):
             with pytest.raises(RuntimeError, match="corrupt PDF"):
-                extract_cv_text(uploaded)
+                extract_cv_text(b"not a pdf", "corrupt.pdf")

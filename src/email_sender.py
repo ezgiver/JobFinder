@@ -96,14 +96,54 @@ def _build_message(
     msg["To"] = recipient
     msg["Subject"] = f"Job Finder Results \u2013 {date_str}"
 
-    body = (
-        f"Jobs scored: {summary['jobs_scored']}\n"
-        f"New jobs added: {summary['new_jobs_added']}\n"
-        f"Total jobs in CSV: {summary['total_in_csv']}"
-    )
-    msg.attach(MIMEText(body, "plain"))
+    # Build a readable plain-text body with top jobs listed
+    lines = [
+        f"Job Finder Daily Digest — {date_str}",
+        f"{'=' * 40}",
+        f"Jobs found: {summary['jobs_scored']}",
+        f"New jobs added: {summary['new_jobs_added']}",
+        f"Total in CSV: {summary['total_in_csv']}",
+        "",
+        "Top results are attached as a CSV. See below for a quick summary:",
+        "",
+    ]
 
-    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    # Keep only the useful columns for the CSV attachment
+    display_cols = [
+        "match_score", "reasoning", "title", "company",
+        "location", "job_url", "date_posted", "verified_sponsor",
+    ]
+    export_df = df[[c for c in display_cols if c in df.columns]].copy()
+
+    # Add top jobs to the email body (up to 5)
+    top = export_df.head(5)
+    for i, (_, row) in enumerate(top.iterrows(), 1):
+        title = row.get("title", "N/A")
+        company = row.get("company", "N/A")
+        location = row.get("location", "N/A")
+        score = row.get("match_score", "N/A")
+        url = row.get("job_url", "")
+        reasoning = str(row.get("reasoning", "")).strip()
+        lines += [
+            f"{i}. {title} @ {company}",
+            f"   Location: {location}",
+            f"   Match score: {score}",
+            f"   {url}",
+        ]
+        if reasoning and reasoning != "nan":
+            # Truncate long reasoning
+            short = reasoning[:200] + "..." if len(reasoning) > 200 else reasoning
+            lines.append(f"   Why: {short}")
+        lines.append("")
+
+    lines += [
+        f"{'=' * 40}",
+        "Full results are attached as a CSV file.",
+    ]
+
+    msg.attach(MIMEText("\n".join(lines), "plain"))
+
+    csv_bytes = export_df.to_csv(index=False).encode("utf-8")
     attachment = MIMEBase("text", "csv")
     attachment.set_payload(csv_bytes)
     encoders.encode_base64(attachment)

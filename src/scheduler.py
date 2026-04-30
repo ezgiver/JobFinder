@@ -31,17 +31,12 @@ def run_pipeline(config: dict) -> pd.DataFrame:
     """Execute scrape → sponsor-verify → score pipeline.
 
     Returns scored DataFrame. Prints timestamped stage status lines to stdout.
-    Exits with status 1 if GEMINI_API_KEY is not set.
+    Raises RuntimeError if GEMINI_API_KEY is not set.
     """
     # Requirement 4.4: check for API key before doing anything
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print(
-            "ERROR: GEMINI_API_KEY environment variable is not set. "
-            "Please export your Gemini API key before running the scheduler.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise RuntimeError("GEMINI_API_KEY environment variable is not set.")
 
     client = genai.Client(api_key=api_key)
 

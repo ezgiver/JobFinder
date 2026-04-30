@@ -89,20 +89,18 @@ def test_main_exits_cleanly_when_all_iterations_done(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Test 3 — run_pipeline exits with non-zero status when GEMINI_API_KEY missing
+# Test 3 — run_pipeline raises RuntimeError when GEMINI_API_KEY missing
 #           (Requirement 4.4)
 # ---------------------------------------------------------------------------
 
 def test_run_pipeline_exits_when_api_key_missing(monkeypatch):
-    """Missing GEMINI_API_KEY → sys.exit(1) before any scraping."""
+    """Missing GEMINI_API_KEY → RuntimeError raised before any scraping."""
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
     config = _base_config()
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         sched.run_pipeline(config)
-
-    assert exc_info.value.code != 0
 
 
 # ---------------------------------------------------------------------------
