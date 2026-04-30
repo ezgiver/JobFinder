@@ -297,6 +297,7 @@ class TestRegisterPage:
             patch("src.app.init_db"),
             patch("src.app.get_scheduler"),
             patch("src.app.get_session", return_value=_session_ctx()),
+            patch("src.app.hash_password", return_value="hashed"),
             patch("src.app.create_user", side_effect=IntegrityError("", "", "")),
         ):
             at = AppTest.from_file(APP_PATH, default_timeout=30)
