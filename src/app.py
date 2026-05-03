@@ -338,10 +338,12 @@ def render_search_page() -> None:
             try:
                 # Build a plain namespace so _run_pipeline_for_user gets the fields it needs
                 class _ProfileProxy:
+                    def __init__(self, user_id):
+                        self.user_id = user_id
+                    
                     target_role = profile_target_role
                     cv_text = profile_cv_text
                     recipient_email = profile_recipient_email
-                    user_id = user_id
                     uk_locations = profile_uk_locations
                     international_locations = profile_intl_locations
 
@@ -353,7 +355,7 @@ def render_search_page() -> None:
                     def international_location_list(self):
                         return profile_intl_location_list
 
-                scored_df = _run_pipeline_for_user(_ProfileProxy())
+                scored_df = _run_pipeline_for_user(_ProfileProxy(user_id))
             except Exception as exc:
                 st.error(f"Search failed: {exc}")
                 return
