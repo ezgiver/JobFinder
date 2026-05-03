@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -87,6 +88,8 @@ def _run_pipeline_for_user(profile) -> pd.DataFrame:
     ------
     EnvironmentError
         If ``GEMINI_API_KEY`` is not set in the environment.
+    RuntimeError
+        If Gemini API rate limit is exceeded after retries.
     """
     # Always force-read .env to ensure the correct key value is used
     env_path = Path(__file__).parent.parent / ".env"
@@ -104,6 +107,7 @@ def _run_pipeline_for_user(profile) -> pd.DataFrame:
         raise EnvironmentError("GEMINI_API_KEY environment variable is not set.")
 
     from google import genai
+    from google.api_core import exceptions as google_exceptions
 
     client = genai.Client(api_key=api_key)
 
@@ -178,8 +182,39 @@ def _run_pipeline_for_user(profile) -> pd.DataFrame:
     jobs_df = pd.concat(filtered_dfs, ignore_index=True).drop_duplicates(subset="job_url", keep="first")
     logger.info("Scoring %d total jobs for user_id=%s...", len(jobs_df), profile.user_id)
 
-    scored_df = score_jobs(profile.cv_text, jobs_df, client)
-    return scored_df
+    # Score jobs with retry logic for rate limiting
+    max_retries = 3
+    retry_delay = 60  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            scored_df = score_jobs(profile.cv_text, jobs_df, client)
+            return scored_df
+        except google_exceptions.ResourceExhausted as e:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "Gemini API rate limit hit for user_id=%s (attempt %d/%d). "
+                    "Waiting %d seconds before retry...",
+                    profile.user_id, attempt + 1, max_retries, retry_delay
+                )
+                import time
+                time.sleep(retry_delay)
+                retry_delay *= 2  # exponential backoff
+            else:
+                logger.error(
+                    "Gemini API rate limit exceeded for user_id=%s after %d attempts.",
+                    profile.user_id, max_retries
+                )
+                raise RuntimeError(
+                    f"Gemini API rate limit exceeded after {max_retries} attempts. "
+                    "Please try again later or reduce the number of jobs to score."
+                ) from e
+        except Exception as e:
+            logger.exception("Unexpected error scoring jobs for user_id=%s", profile.user_id)
+            raise
+    
+    # Should never reach here, but just in case
+    return pd.DataFrame()
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +286,18 @@ def run_daily_digest() -> None:
 
         try:
             scored_df = _run_pipeline_for_user(_ProfileProxy())
+        except RuntimeError as e:
+            # Rate limiting or other runtime errors
+            if "rate limit" in str(e).lower():
+                logger.warning(
+                    "Rate limit hit for user_id=%s — skipping this run. "
+                    "User will be included in the next scheduled run.",
+                    pdata["user_id"]
+                )
+            else:
+                logger.error("Runtime error for user_id=%s: %s", pdata["user_id"], e)
+            errors += 1
+            continue
         except Exception:
             logger.exception("Pipeline failed for user_id=%s.", pdata["user_id"])
             errors += 1
