@@ -50,5 +50,6 @@ jobs:
         run: |
           cd /home/freebox/JobFinder
           source venv/bin/activate
-          pip install .
+          pip install --upgrade pip
+          pip install -e .
           sudo systemctl restart jobfinder
